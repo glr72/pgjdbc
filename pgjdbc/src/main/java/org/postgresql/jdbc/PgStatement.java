@@ -278,6 +278,30 @@ public class PgStatement implements Statement, BaseStatement {
       return rs;
     }
 
+    // GLR- START
+    //Step 0: this is my query, do not try to replace!
+    String new_p_sql= new String(p_sql);
+    if(p_sql.toLowerCase().indexOf("gpdb_query_")==-1 ) {
+      {
+        // Log the query
+        int hc = p_sql.hashCode();
+        executeWithFlags("insert into gpdb_query_log (hashcode, sql_text) values("+hc+",'"+p_sql+"')",0);
+      }
+      // Step 1: calculate query hash
+      int hc = p_sql.hashCode();
+      System.out.println("Searching hash: " + hc);
+      //Step 2: search for query
+      executeWithFlags("select sql_text from gpdb_query_replacement where hashcode="+ hc, 0 );
+      ResultSet rs=  (ResultSet)result.getResultSet();
+      while (rs.next()) {
+        new_p_sql= new String(rs.getString("sql_text"));
+      }
+      // Gianluca : update query timestamp
+      executeWithFlags("update gpdb_query_replacement set last_timestamp = current_timestamp where hashcode="+ hc, 0);
+    } else {
+      System.out.println("this query contains the name of the replacement table");
+    }
+    // GLR - END
     if (!executeWithFlags(p_sql, 0)) {
       throw new PSQLException(GT.tr("No results were returned by the query."), PSQLState.NO_DATA);
     }
