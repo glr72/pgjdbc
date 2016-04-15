@@ -91,7 +91,35 @@ class PgPreparedStatement extends PgStatement implements PreparedStatement {
       int rsConcurrency, int rsHoldability) throws SQLException {
     super(connection, rsType, rsConcurrency, rsHoldability);
 
-    this.preparedQuery = connection.borrowQuery(sql, isCallable);
+        // GLR - START
+        String new_p_sql= new String(sql);
+        String p_sql = sql
+        //Step 0: this is my query, do not try to replace!
+        if(sql.toLowerCase().indexOf("gpdb_query_")==-1 ) {
+                {
+                        // Log the query
+                        int hc = p_sql.hashCode();
+                        executeWithFlags("insert into gpdb_query_log (hashcode, sql_text) values("+hc+",'"+p_sql+"')",0);
+                }
+
+                // Step 1: calculate query hash
+                int hc = p_sql.hashCode();
+                System.out.println("Searching hash: " + hc);
+                //Step 2: search for query
+                executeWithFlags("select sql_text from gpdb_query_replacement where hashcode="+ hc, 0 );
+                ResultSet rs=  (ResultSet)result.getResultSet();
+                while (rs.next()) {
+                        new_p_sql= new String(rs.getString("sql_text"));
+                }
+                // Gianluca : update query timestamp
+                executeWithFlags("update gpdb_query_replacement set last_timestamp = current_timestamp where hashcode="+ hc, 0);
+                p_sql = new_p_sql;
+        } else {
+                System.out.println("this query contains the name of the replacement table");
+        }
+    // GLR - END
+
+    this.preparedQuery = connection.borrowQuery(p_sql, isCallable);
     this.preparedParameters = this.preparedQuery.query.createParameterList();
 
     setPoolable(true); // As per JDBC spec: prepared and callable statements are poolable by
